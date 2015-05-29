@@ -56,6 +56,7 @@ POST_REPLY_TEMPLATE = '''
 ^^Have ^^feedback ^^or ^^a ^^suggestion?
 [^^\[pm ^^the ^^creator\]]
 (https://np.reddit.com/message/compose/?to=microwavable_spoon&subject=PS2Bot%20Feedback)
+^^| [^^\[see ^^my ^^code\]](https://github.com/plasticantifork/PS2Bot)
 '''
 
 sql = sqlite3.connect((os.path.join(sys.path[0],'ps2bot-sql.db')))
