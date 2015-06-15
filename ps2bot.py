@@ -6,7 +6,6 @@ import sqlite3
 import re
 import json
 import requests
-from requests.exceptions import HTTPError
 from datetime import datetime,timedelta
 
 import credentials
@@ -251,7 +250,7 @@ def ps2bot():
 
 try:
     ps2bot()
-except HTTPError:
+except requests.exceptions.HTTPError:
     print(now_stamp(), 'A site/service is down. Probably Reddit.')
 except Exception:
     traceback.print_exc()
