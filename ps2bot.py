@@ -4,8 +4,9 @@ import praw
 import time
 import sqlite3
 import re
-import requests
 import json
+import requests
+from requests.exceptions import HTTPError
 from datetime import datetime,timedelta
 
 import credentials
