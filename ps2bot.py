@@ -67,7 +67,7 @@ cur.execute('CREATE INDEX IF NOT EXISTS mentionindex on oldmentions(id)')
 sql.commit()
 
 r = praw.Reddit(USERAGENT)
-r.login(USERNAME, PASSWORD) 
+r.login(USERNAME, PASSWORD, disable_warning=True) 
 
 
 def now_stamp():
