@@ -195,7 +195,7 @@ def ps2bot():
     mentions = []
     unreads = list(r.get_unread(limit=None))
     for unread in unreads:
-        if ('/u/'+USERNAME) in unread.body.lower():
+        if ('u/'+USERNAME) in unread.body.lower():
             mentions.append(unread)
         else:
             unread.mark_as_read()
