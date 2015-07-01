@@ -222,14 +222,27 @@ def ps2bot():
         pbody_split = pbody_split.split(' ')
         pbody_split = list(filter(None, pbody_split))
         try:
-            if pbody_split[pbody_split.index(USERNAME)-1] == "u":
-                charname = pbody_split[pbody_split.index(USERNAME)+1]
-            else:
+            if pbody_split.index(USERNAME) == (len(pbody_split)-1):
                 print('%s %s is not valid. Adding to database anyway. (001)' % (now_stamp(), mid))
                 cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
                 sql.commit()
                 continue
-        except (IndexError, KeyError, ValueError):
+            else:
+                try:
+                    charname = ""
+                    pbody_index = 0
+                    while 1:
+                        pbody_index = pbody_split.index(USERNAME, pbody_index+1)
+                        if pbody_split[pbody_index-1] == "u":
+                            charname = pbody_split[pbody_index+1]
+                except ValueError:
+                    pass
+                if charname = "":
+                    print('%s %s is not valid. Adding to database anyway. (001)' % (now_stamp(), mid))
+                    cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
+                    sql.commit()
+                    continue
+        except (IndexError, KeyError):
             print('%s %s is not valid. Adding to database anyway. (002)' % (now_stamp(), mid))
             cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
             sql.commit()
