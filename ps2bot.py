@@ -237,7 +237,7 @@ def ps2bot():
                             charname = pbody_split[pbody_index+1]
                 except ValueError:
                     pass
-                if charname = "":
+                if charname == "":
                     print('%s %s is not valid. Adding to database anyway. (001)' % (now_stamp(), mid))
                     cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
                     sql.commit()
