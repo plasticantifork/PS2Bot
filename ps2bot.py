@@ -75,7 +75,7 @@ def now_stamp():
     time_stamp = psttime.strftime("%m-%d-%y %I:%M:%S %p PST ::")
     return time_stamp
 
-def generate_report(charname):
+def generate_report(charname, mid):
     try:
         census_char = requests.get(URL_CENSUS_CHAR % charname)
     except (IndexError, HTTPError):
@@ -251,7 +251,7 @@ def ps2bot():
         cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
         sql.commit()
 
-        post_reply = generate_report(charname)
+        post_reply = generate_report(charname, mid)
         if post_reply is None:
             continue
 
