@@ -1,19 +1,12 @@
 import traceback
 import sys, os
-import praw
+import praw, oauthPS2Bot
 import time
 import sqlite3
 import re
 import json
 import requests
 from datetime import datetime,timedelta
-
-import credentials
-USERNAME  = credentials.u
-PASSWORD  = credentials.p
-USERAGENT = "Planetside 2 Stats Poster"
-
-USERNAME = USERNAME.lower()
 
 URL_CENSUS_CHAR = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
 URL_CENSUS_CHAR_STAT = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/characters_stat?character_id=%s&c:limit=5000'
@@ -23,6 +16,8 @@ URL_FISU = "[[fisu]](http://ps2.fisu.pw/player/?name=%s)"
 URL_PSU = "[[psu]](http://www.planetside-universe.com/character-%s.php)"
 URL_PLAYERS = "[[players]](https://www.planetside2.com/players/#!/%s)"
 URL_KILLBOARD = "[[killboard]](https://www.planetside2.com/players/#!/%s/killboard)"
+
+USERNAME = "ps2bot"
 
 SERVERS = {
     '1': 'Connery (US West)',
@@ -66,9 +61,7 @@ cur.execute('CREATE TABLE IF NOT EXISTS oldmentions(id TEXT)')
 cur.execute('CREATE INDEX IF NOT EXISTS mentionindex on oldmentions(id)')
 sql.commit()
 
-r = praw.Reddit(USERAGENT)
-r.login(USERNAME, PASSWORD, disable_warning=True) 
-
+r = oauthPS2Bot.login()
 
 def now_stamp():
     psttime = datetime.utcnow() - timedelta(hours=7)
