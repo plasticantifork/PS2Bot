@@ -7,6 +7,8 @@ import re
 import json
 import requests
 from datetime import datetime,timedelta
+import warnings
+warnings.filterwarnings("ignore")
 
 URL_CENSUS_CHAR = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
 URL_CENSUS_CHAR_STAT = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/characters_stat?character_id=%s&c:limit=5000'
@@ -260,4 +262,3 @@ except requests.exceptions.HTTPError:
     print(now_stamp(), 'A site/service is down. Probably Reddit.')
 except Exception:
     traceback.print_exc()
-quit()
