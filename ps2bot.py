@@ -385,7 +385,7 @@ def functionMapComment(comment):
 def ps2bot():
     unreads = list(r.get_unread(limit=None))
     for message in unreads:
-        if ('u/ps2bot') in message.body.lower():
+        if (('u/ps2bot') in message.body.lower()) and (message.was_comment):
             handleBotMention(message)
         else:
             message.mark_as_read()
