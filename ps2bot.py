@@ -1,53 +1,80 @@
-import traceback
-import sys, os
-import praw, oauthPS2Bot
-import time
-import sqlite3
-import re
+###############################################################################
+### PS2Bot (running at https://www.reddit.com/user/PS2Bot)
+### Github https://github.com/plasticantifork/PS2Bot
+### By /u/microwavable_spoon (aka plasticantifork)
+### With contributions from /u/shaql & /u/GoldenSights
+###############################################################################
+
 import json
+import praw
+import oauthPS2Bot
+import os
+import re
 import requests
+import shlex
+import sqlite3
+import sys
+import time
+import traceback
 from datetime import datetime,timedelta
 import warnings
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
-URL_CENSUS_CHAR = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
-URL_CENSUS_CHAR_STAT = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/characters_stat?character_id=%s&c:limit=5000'
+censusCharPC = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
+censusCharPS4US = 'http://census.daybreakgames.com/s:vAPP/get/ps2ps4us:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
+censusCharPS4EU = 'http://census.daybreakgames.com/s:vAPP/get/ps2ps4eu:v2/character/?name.first=%s&c:case=false&c:resolve=stat_history,faction,world,outfit_member_extended'
 
-URL_DASANFALL = "[[dasanfall]](http://stats.dasanfall.com/ps2/player/%s)"
-URL_FISU = "[[fisu]](http://ps2.fisu.pw/player/?name=%s)"
-URL_PSU = "[[psu]](http://www.planetside-universe.com/character-%s.php)"
-URL_PLAYERS = "[[players]](https://www.planetside2.com/players/#!/%s)"
-URL_KILLBOARD = "[[killboard]](https://www.planetside2.com/players/#!/%s/killboard)"
+censusCharStatPC = 'http://census.daybreakgames.com/s:vAPP/get/ps2:v2/characters_stat?character_id=%s&c:limit=5000'
+censusCharStatPS4US = 'http://census.daybreakgames.com/s:vAPP/get/ps2ps4us:v2/characters_stat?character_id=%s&c:limit=5000'
+censusCharStatPS4EU = 'http://census.daybreakgames.com/s:vAPP/get/ps2ps4eu:v2/characters_stat?character_id=%s&c:limit=5000'
 
-USERNAME = "ps2bot"
+censusServerStatus = 'https://census.daybreakgames.com/s:vAPP/json/status?game=ps2'
 
-SERVERS = {
+externalStatsDasanfall = '[[dasanfall]](http://stats.dasanfall.com/ps2/player/%s)'
+externalStatsFisu = '[[fisu]](http://ps2.fisu.pw/player/?name=%s)'
+externalStatsFisuPS4US = '[[fisu]](http://ps4us.ps2.fisu.pw/player/?name=%s)'
+externalStatsFisuPS4EU = '[[fisu]](http://ps4eu.ps2.fisu.pw/player/?name=%s)'
+externalStatsPsu = '[[psu]](http://www.planetside-universe.com/character-%s.php)'
+externalStatsPlayers = '[[players]](https://www.planetside2.com/players/#!/%s)'
+externalStatsKillboard = '[[killboard]](https://www.planetside2.com/players/#!/%s/killboard)'
+
+serverDict = {
     '1': 'Connery (US West)',
     '17': 'Emerald (US East)',
     '10': 'Miller (EU)',
     '13': 'Cobalt (EU)',
     '25': 'Briggs (AU)',
-    '19': 'Jaeger'
+    '19': 'Jaeger',
+    '1000': 'Genudine',
+    '1001': 'Palos',
+    '1002': 'Crux',
+    '2000': 'Ceres',
+    '2001': 'Lithcorp'
 }
 
-POST_REPLY_TEMPLATE = '''
-**Some stats about {char_name_truecase}.**
+replyTextTemplate = '''
+**Some stats about {charCase} ({gameVersion}).**
 
-------
+---
 
-- Character created: {char_creation}
-- Last login: {char_login}
-- Time played: {char_playtime} ({char_logins} login{login_plural})
-- Battle rank: {char_rank}
-- Faction: {char_faction_en}
-- Server: {char_server}
-- Outfit: {char_outfit}
-- Score: {char_score} | Captured: {char_captures} | Defended: {char_defended}
-- Medals: {char_medals} | Ribbons: {char_ribbons} | Certs: {char_certs}
-- Kills: {char_kills} | Assists: {char_assists} | Deaths: {char_deaths} | KDR: {char_kdr}
-- Links: {links_dasanfall} {links_fisu} {links_psu} {links_players} {links_killboard}
+- Character created: {charCreation}
+- Last login: {charLogin}
+- Time played: {charPlaytime} ({charLogins} login{loginPlural})
+- Battle rank: {charRank}
+- Faction: {charFaction}
+- Server: {charServer}
+- Outfit: {charOutfit}
+- Score: {charScore} | Captured: {charCaptured} | Defended: {charDefended}
+- Medals: {charMedals} | Ribbons: {charRibbons} | Certs: {charCerts}
+- Kills: {charKills} | Assists: {charAssists} | Deaths: {charDeaths} | KDR: {charKDR}
+- Links: {externalStats}
 
-------
+
+'''
+
+replyTextFooter = '''
+
+---
 
 ^^This ^^post ^^was ^^made ^^by ^^a ^^bot.
 ^^Have ^^feedback ^^or ^^a ^^suggestion?
@@ -55,6 +82,9 @@ POST_REPLY_TEMPLATE = '''
 (https://np.reddit.com/message/compose/?to=microwavable_spoon&subject=PS2Bot%20Feedback)
 ^^| [^^\[see ^^my ^^code\]](https://github.com/plasticantifork/PS2Bot)
 '''
+
+commandIdentifiers = ['/u/ps2bot', 'u/ps2bot']
+multipleCommandJoiner = '\n---\n'
 
 sql = sqlite3.connect((os.path.join(sys.path[0],'ps2bot-sql.db')))
 cur = sql.cursor()
@@ -65,200 +95,322 @@ sql.commit()
 
 r = oauthPS2Bot.login()
 
-def now_stamp():
-    psttime = datetime.utcnow() - timedelta(hours=7)
-    time_stamp = psttime.strftime("%m-%d-%y %I:%M:%S %p PST ::")
-    return time_stamp
+def nowStamp():
+    pstTime = datetime.utcnow() - timedelta(hours=7)
+    timeStamp = pstTime.strftime('%m-%d-%y %I:%M:%S %p PST ::')
+    return timeStamp
 
-def generate_report(charname, mid):
-    try:
-        census_char = requests.get(URL_CENSUS_CHAR % charname)
-    except (IndexError, HTTPError):
-        return None
-        
-    census_char = census_char.text
-    census_char = json.loads(census_char)
-    char_exist = census_char['returned']
-    if char_exist != 1:
-        print('%s %s - character: %s does not exist. Adding to database anyway (003)' % (now_stamp(), mid, charname))
-        cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
-        sql.commit()
-        return None
-            
-    census_char = census_char['character_list'][0]
-    char_name_truecase = census_char['name']['first']
-    char_id = census_char['character_id']
-    try:
-        census_stat = requests.get(URL_CENSUS_CHAR_STAT % char_id)
-    except (IndexError, HTTPError):
-        return None
-        
-    time_format = "%a, %b %d, %Y (%m/%d/%y), %I:%M:%S %p PST"
-    char_creation = time.strftime(time_format, time.localtime(float(census_char['times']['creation'])))
-    char_login = time.strftime(time_format, time.localtime(float(census_char['times']['last_login'])))
-    char_login_count = int(float(census_char['times']['login_count']))
-    char_hours, char_minutes = divmod(int(census_char['times']['minutes_played']), 60)
+def generateReportPC(charName=None, *trash):
+    if charName is None:
+        return
+    externalStats = [
+    {'url': externalStatsDasanfall, 'identifier': 'char_id'},
+    {'url': externalStatsFisu, 'identifier': 'char_name'},
+    {'url': externalStatsPsu, 'identifier': 'char_id'},
+    {'url': externalStatsPlayers, 'identifier': 'char_id'},
+    {'url': externalStatsKillboard, 'identifier': 'char_id'}
+    ]
+    return generateReport(charName, censusCharPC, censusCharStatPC, externalStats, 'PC')
+
+def generateReportPS4US(charName=None, *trash):
+    if charName is None:
+        return
+    externalStats = [
+    {'url': externalStatsFisuPS4US, 'identifier': 'char_name'}
+    ]
+    return generateReport(charName, censusCharPS4US, censusCharStatPS4US, externalStats, 'PS4 US')
+
+def generateReportPS4EU(charName=None, *trash):
+    if charName is None:
+        return
+    externalStats = [
+    {'url': externalStatsFisuPS4EU, 'identifier': 'char_name'}
+    ]
+    return generateReport(charName, censusCharPS4EU, censusCharStatPS4EU, externalStats, 'PS4 EU')
+
+def reportServerStatus(*trash):
+    statusStatusDict = {'low': 'UP','medium': 'UP','high': 'UP','down': 'DOWN'}
+    statusRegionsDict = {'Palos': 'Palos (US)','Genudine': 'Genudine (US)','Crux': 'Crux (US)'}
+    statusPopulationDict = {'down': ''}
+    jContent = json.loads(requests.get(censusServerStatus).text)
+    results = []
     
-    char_playtime = "{:,} hour{s}".format(char_hours, s='' if char_hours == 1 else 's')
-    char_playtime += " {:,} minute{s}".format(char_minutes, s='' if char_minutes == 1 else 's')
+    def statusReader(jInfo, header):
+        table = []
+        entries = []
+        table.append(header)
+        table.append('server | status | population')
+        table.append(':- | :-: | :-:')
 
-    try:
-        char_score = int(census_char['stats']['stat_history'][8]['all_time'])
-        char_capture = int(census_char['stats']['stat_history'][3]['all_time'])
-        char_defend = int(census_char['stats']['stat_history'][4]['all_time'])
-        char_medal = int(census_char['stats']['stat_history'][6]['all_time'])
-        char_ribbon = int(census_char['stats']['stat_history'][7]['all_time'])
-        char_certs = int(census_char['stats']['stat_history'][1]['all_time'])
-    except (IndexError, KeyError, ValueError):
-        char_score = 0
-        char_capture = 0
-        char_defend = 0
-        char_medal = 0
-        char_ribbon = 0
-        char_certs = 0
+        for server, status in jInfo.items():
+            if any(nonexist in server for nonexist in ['Dahaka', 'Xelas', 'Rashnu', 'Searhus']):
+                continue
+            server = statusRegionsDict.get(server, server)
+            pop = status['status']
+            updown = statusStatusDict[pop]
+            pop = statusPopulationDict.get(pop, pop)
+            entries.append('%s | %s | %s' % (server, updown, pop))
 
-    char_rank = '%s' % census_char['battle_rank']['value']
-    char_rank_next = census_char['battle_rank']['percent_to_next']
-    if char_rank_next != "0":
-        char_rank += " (%s%% to next)" % char_rank_next
+        entries.sort(key=lambda x: ('(US W' in x, '(US E' in x, '(US' in x, '(EU' in x, '(AU' in x, x), reverse=True)
+        table += entries
+        table.append('\n\n')
+        return table
 
-    char_faction = census_char['faction']
-    try:
-        char_outfit = census_char['outfit_member']
-        if char_outfit['member_count'] != "1":
-            members = '{:,}'.format(int(char_outfit['member_count']))
-            char_outfit = '[%s] %s (%s members)' % (char_outfit['alias'], char_outfit['name'], members)
-        else:
-            char_outfit = '[%s] %s (1 member)' % (char_outfit['alias'], char_outfit['name'])
-    except KeyError:
-        char_outfit = "None"
+    results += statusReader(jContent['ps2']['Live'], '**PC Server Status**\n')
+    results += statusReader(jContent['ps2']['Live PS4'], '**PS4 Server Status**\n')
+    results = '\n'.join(results)
+    return results
 
+def generateReport(charName, urlCensus, urlStatistics, externalStats, gameVersion):
     try:
-        char_kills = int(census_char['stats']['stat_history'][5]['all_time'])
-        char_deaths = int(census_char['stats']['stat_history'][2]['all_time'])
-        if char_deaths != 0:
-            char_kdr = round(char_kills/char_deaths,3)
-        else:
-            char_kdr = char_kills
-    except (KeyError, ZeroDivisionError):
-        char_kills = 0
-        char_deaths = 0
-        char_kdr = 0
-    census_stat = census_stat.text
-    census_stat = json.loads(census_stat)
-    char_stat = census_stat['characters_stat_list']
+        censusChar = requests.get(urlCensus % charName)
+        censusChar = censusChar.text
+        censusChar = json.loads(censusChar)
+    except (IndexError, KeyError, requests.exceptions.HTTPError):
+        return None
+
+    if censusChar['returned'] != 1:
+        print('%s Character %s does not exist' % (nowStamp(), charName))
+        return
+            
+    censusChar = censusChar['character_list'][0]
+    charCase = censusChar['name']['first']
+    charID = censusChar['character_id']
     try:
-        for stat in char_stat:
-            if stat['stat_name'] == 'assist_count':
-                char_assists = int(stat['value_forever'])
-                break
-            else:
-                char_assists = 0
-    except (IndexError, KeyError, ValueError):
-        char_assists = 0
+        censusStat = requests.get(urlStatistics % charID)
+        censusStat = censusStat.text
+        censusStat = json.loads(censusStat)
+        if censusStat['returned'] == 0:
+            print('%s Character %s has never logged on' % (nowStamp(), charName))
+            return
+    except (IndexError, KeyError, requests.exceptions.HTTPError):
+        return
         
-    post_reply = POST_REPLY_TEMPLATE.format(
-        char_name_truecase = char_name_truecase,
-        char_creation = char_creation,
-        char_login = char_login,
-        char_playtime = char_playtime,
-        char_logins = '{:,}'.format(char_login_count),
-        login_plural = 's' if char_login_count != 1 else '',
-        char_rank = char_rank,
-        char_faction_en = char_faction['name']['en'],
-        char_server = SERVERS[census_char['world_id']],
-        char_outfit = char_outfit,
-        char_score = '{:,}'.format(char_score),
-        char_captures ='{:,}'.format(char_capture),
-        char_defended = '{:,}'.format(char_defend),
-        char_medals = '{:,}'.format(char_medal),
-        char_ribbons = '{:,}'.format(char_ribbon),
-        char_certs = '{:,}'.format(char_certs),
-        char_kills = '{:,}'.format(char_kills),
-        char_assists = '{:,}'.format(char_assists),
-        char_deaths = '{:,}'.format(char_deaths),
-        char_kdr = '{:,}'.format(char_kdr),
-        links_dasanfall = URL_DASANFALL % char_id,
-        links_fisu = URL_FISU % char_name_truecase,
-        links_psu = URL_PSU % char_id,
-        links_players = URL_PLAYERS % char_id,
-        links_killboard = URL_KILLBOARD % char_id
+    timeFormat = '%a, %b %d, %Y (%m/%d/%y), %I:%M:%S %p PST'
+    charCreation = time.strftime(timeFormat, time.localtime(float(censusChar['times']['creation'])))
+    charLogin = time.strftime(timeFormat, time.localtime(float(censusChar['times']['last_login'])))
+    charLoginCount = int(float(censusChar['times']['login_count']))
+    charHours, charMinutes = divmod(int(censusChar['times']['minutes_played']), 60)
+    
+    charPlaytime = '{:,} hour{s}'.format(charHours, s='' if charHours == 1 else 's')
+    charPlaytime += ' {:,} minute{s}'.format(charMinutes, s='' if charMinutes == 1 else 's')
+
+    try:
+        charScore = int(censusChar['stats']['stat_history'][8]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charScore = 0
+    try:
+        charCaptured = int(censusChar['stats']['stat_history'][3]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charCaptured = 0
+    try:
+        charDefended = int(censusChar['stats']['stat_history'][4]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charDefended = 0
+    try:
+        charMedals = int(censusChar['stats']['stat_history'][6]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charMedals = 0
+    try:
+        charRibbons = int(censusChar['stats']['stat_history'][7]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charRibbons = 0
+    try:
+        charCerts = int(censusChar['stats']['stat_history'][1]['all_time'])
+    except (IndexError, KeyError, ValueError):
+        charCerts = 0
+
+    charRank = '%s' % censusChar['battle_rank']['value']
+    charRankNext = censusChar['battle_rank']['percent_to_next']
+    if charRankNext != '0':
+        charRank += ' (%s%% to next)' % charRankNext
+
+    charFaction = censusChar['faction']
+    try:
+        charOutfit = censusChar['outfit_member']
+        if charOutfit['member_count'] != '1':
+            members = '{:,}'.format(int(charOutfit['member_count']))
+            charOutfit = '[%s] %s (%s members)' % (charOutfit['alias'], charOutfit['name'], members)
+        else:
+            charOutfit = '[%s] %s (1 member)' % (charOutfit['alias'], charOutfit['name'])
+    except KeyError:
+        charOutfit = 'None'
+
+    try:
+        charKills = int(censusChar['stats']['stat_history'][5]['all_time'])
+        charDeaths = int(censusChar['stats']['stat_history'][2]['all_time'])
+        if charDeaths != 0:
+            charKDR = round(charKills/charDeaths,3)
+        else:
+            charKDR = charKills
+    except (KeyError, ZeroDivisionError):
+        charKills = 0
+        charDeaths = 0
+        charKDR = 0
+
+    charStat = censusStat['characters_stat_list']
+    #print(charStat)
+    charAssists = 0
+    try:
+        for stat in charStat:
+            if stat['stat_name'] == 'assist_count':
+                charAssists = int(stat['value_forever'])
+                break
+    except (IndexError, KeyError, ValueError):
+        charAssists = 0
+        
+    filledExternalStats = []
+    for site in externalStats:
+        url = site['url']
+        if site['identifier'] == 'char_id':
+            url = url % charID
+        elif site['identifier'] == 'char_name':
+            url = url % charCase
+        filledExternalStats.append(url)
+    filledExternalStats = ' '.join(filledExternalStats)
+
+    replyText = replyTextTemplate.format(
+        charCase = charCase,
+        gameVersion = gameVersion,
+        charCreation = charCreation,
+        charLogin = charLogin,
+        charPlaytime = charPlaytime,
+        charLogins = '{:,}'.format(charLoginCount),
+        loginPlural = 's' if charLoginCount != 1 else '',
+        charRank = charRank,
+        charFaction = charFaction['name']['en'],
+        charServer = serverDict[censusChar['world_id']],
+        charOutfit = charOutfit,
+        charScore = '{:,}'.format(charScore),
+        charCaptured ='{:,}'.format(charCaptured),
+        charDefended = '{:,}'.format(charDefended),
+        charMedals = '{:,}'.format(charMedals),
+        charRibbons = '{:,}'.format(charRibbons),
+        charCerts = '{:,}'.format(charCerts),
+        charKills = '{:,}'.format(charKills),
+        charAssists = '{:,}'.format(charAssists),
+        charDeaths = '{:,}'.format(charDeaths),
+        charKDR = '{:,}'.format(charKDR),
+        externalStats = filledExternalStats
         )
-    return post_reply
+    return replyText
+
+def handleBotMention(mention, *trash):
+    #print('handling mention', mention.id)
+    mention.mark_as_read()
+        
+    try:
+        pAuthor = mention.author.name
+    except AttributeError:
+        return
+
+    cur.execute('SELECT * FROM oldmentions WHERE ID=?', [mention.id])
+    if cur.fetchone():
+        return
+        
+    cur.execute('INSERT INTO oldmentions VALUES(?)', [mention.id])
+    sql.commit()
+
+    replyText = functionMapComment(mention.body)
+
+    if replyText in [[], None]:
+        return
+
+    replyText = multipleCommandJoiner.join(replyText)
+    replyText += replyTextFooter
+    #print('Generated reply text:', replyText[:10])
+
+    print('%s Replying to %s by %s' % (nowStamp(), mention.id, pAuthor))
+    try:
+        mention.reply(replyText)
+    except praw.errors.PRAWException:
+        return
+
+def functionMapLine(text):
+    #print('User said:', text)
+    elements = shlex.split(text)
+    #print('Broken into:', elements)
+    results = []
+    for elementIndex, element in enumerate(elements):
+        if element.lower() not in commandIdentifiers:
+            continue
+
+        arguments = elements[elementIndex:]
+        assert arguments.pop(0).lower() in commandIdentifiers
+        
+        # process one command per line at a time
+        for argumentIndex, argument in enumerate(arguments):
+            if argument.lower() in commandIdentifiers:
+                arguments = arguments[:argumentIndex]
+                break
+
+        #print('Found command:', arguments)
+        if len(arguments) == 0:
+            #print('Did nothing')
+            continue
+
+        command = arguments[0].lower()
+        actualFunction = command in functionMap
+        function = functionMap.get(command, defaultFunction)
+        #print('Using function:', function.__name__)
+
+        if actualFunction:
+            arguments = arguments[1:]
+        result = function(*arguments)
+        #print('Output:', result)
+        results.append(result)
+    return results
+
+def functionMapComment(comment):
+    lines = comment.split('\n')
+    results = []
+    for line in lines:
+        result = functionMapLine(line)
+        if result is None:
+            continue
+        result = list(filter(None, result))
+        if result is []:
+            continue
+        results += result
+        
+    # remove duplicate commands
+    results.reverse()
+    for item in results[:]:
+        if results.count(item) > 1:
+            results.remove(item)
+    results.reverse()
+            
+    return results
 
 def ps2bot():
-    mentions = []
     unreads = list(r.get_unread(limit=None))
-    for unread in unreads:
-        if ('u/'+USERNAME) in unread.body.lower():
-            mentions.append(unread)
+    for message in unreads:
+        if ('u/ps2bot') in message.body.lower():
+            handleBotMention(message)
         else:
-            unread.mark_as_read()
-    for mention in mentions:
-        mention.mark_as_read()
-        mid = mention.id
-        
-        try:
-            pauthor = mention.author.name
-        except AttributeError:
-            continue
+            message.mark_as_read()
 
-        if pauthor.lower() == USERNAME:
-            continue
+defaultFunction = generateReportPC
+functionMap = {
+    '!player': generateReportPC,
+    '!p': generateReportPC,
 
-        cur.execute('SELECT * FROM oldmentions WHERE ID=?', [mid])
-        if cur.fetchone():
-            continue
-        
-        pbody = mention.body.lower()
-        pbody = pbody.replace('\n', ' ')
-        pbody_split = pbody.split('/')
-        pbody_split = re.sub(r'[^A-Za-z0-9 ]+', '', str(pbody_split))
-        pbody_split = pbody_split.split(' ')
-        pbody_split = list(filter(None, pbody_split))
-        try:
-            if pbody_split.index(USERNAME) == (len(pbody_split)-1):
-                print('%s %s is not valid. Adding to database anyway. (001)' % (now_stamp(), mid))
-                cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
-                sql.commit()
-                continue
-            else:
-                try:
-                    charname = ""
-                    pbody_index = 0
-                    while 1:
-                        pbody_index = pbody_split.index(USERNAME, pbody_index+1)
-                        if pbody_split[pbody_index-1] == "u":
-                            charname = pbody_split[pbody_index+1]
-                except ValueError:
-                    pass
-                if charname == "":
-                    print('%s %s is not valid. Adding to database anyway. (001)' % (now_stamp(), mid))
-                    cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
-                    sql.commit()
-                    continue
-        except (IndexError, KeyError):
-            print('%s %s is not valid. Adding to database anyway. (002)' % (now_stamp(), mid))
-            cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
-            sql.commit()
-            continue
-        
-        cur.execute('INSERT INTO oldmentions VALUES(?)', [mid])
-        sql.commit()
+    '!playerps4us': generateReportPS4US,
+    '!ps4us': generateReportPS4US,
+    '!p4us': generateReportPS4US,
 
-        post_reply = generate_report(charname, mid)
-        if post_reply is None:
-            continue
+    '!playerps4eu': generateReportPS4EU,
+    '!ps4eu': generateReportPS4EU,
+    '!p4eu': generateReportPS4EU,
 
-        print('%s Replying to %s by %s' % (now_stamp(), mid, pauthor))
-        try:
-            mention.reply(post_reply)
-        except APIException:
-            pass
+    '!status': reportServerStatus,
+    '!s': reportServerStatus
+}
+functionMap = {c.lower():functionMap[c] for c in functionMap}
 
 try:
     ps2bot()
-except requests.exceptions.HTTPError:
-    print(now_stamp(), 'A site/service is down. Probably Reddit.')
+except praw.errors.HTTPException:
+    pass
 except Exception:
     traceback.print_exc()
