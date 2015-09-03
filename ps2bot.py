@@ -169,10 +169,13 @@ def generateReport(charName, urlCensus, urlStatistics, externalStats, gameVersio
     except (IndexError, KeyError, requests.exceptions.HTTPError):
         return None
 
-    if censusChar['returned'] != 1:
-        print('%s Character %s does not exist' % (nowStamp(), charName))
+    try:
+        if censusChar['returned'] != 1:
+            print('%s Character %s does not exist' % (nowStamp(), charName))
+            return
+    except (IndexError, KeyError):
         return
-            
+        
     censusChar = censusChar['character_list'][0]
     charCase = censusChar['name']['first']
     charID = censusChar['character_id']
@@ -410,7 +413,7 @@ functionMap = {c.lower():functionMap[c] for c in functionMap}
 
 try:
     ps2bot()
-except praw.errors.HTTPException:
+except (praw.errors.HTTPException, requests.exceptions.ConnectionError):
     pass
 except Exception:
     traceback.print_exc()
